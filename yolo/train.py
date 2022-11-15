@@ -9,6 +9,7 @@ import os
 import numpy as np
 import pandas as pd
 from PIL import Image
+from terminaltables import AsciiTable
 
 class ListDataset(Dataset):
     def __init__(self, img_path, label_path):
@@ -40,33 +41,22 @@ class ListDataset(Dataset):
     def __len__(self):
         return len(self.images)
 
-def _create_data_loader(img_path, label_path, batch_size):
-
-    dataset = ListDataset(
-        img_path=img_path,
-        label_path=label_path
-    )
-
-    dataloader = DataLoader(
-        dataset,
-        batch_size=batch_size,
-        shuffle=True,
-    )
-
-    return dataloader
-
 def train():
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    epochs = 100
 
     model = load_model("../cfg/yolov3.cfg")
     mini_batch_size = model.hyperparams['batch'] // model.hyperparams['subdivisions']
 
-    dataloader = _create_data_loader(
-        "../data/train/",
-        "../data/train_solution_bounding_boxes.csv",
-        mini_batch_size,
+    dataset = ListDataset(
+        img_path="../data/train/",
+        label_path="../data/train_solution_bounding_boxes.csv"
+    )
+
+    dataloader = DataLoader(
+        dataset,
+        batch_size=mini_batch_size,
+        shuffle=True,
     )
 
     params = [p for p in model.parameters() if p.requires_grad]
@@ -77,6 +67,7 @@ def train():
         weight_decay=model.hyperparams['decay'],
     )
 
+    epochs = 10
     for epoch in range(1, epochs+1):
         print("\n---- Training the yolo Model ----")
         model.train()
@@ -109,10 +100,23 @@ def train():
                 optimizer.step()
                 optimizer.zero_grad()
 
-            print(loss, loss_components)
-            # checkpoint_path = f"model/yolo.pth"
-            # print(f"---- Saving epoch {epoch} to: '{checkpoint_path}' ----")
-            # torch.save(model.state_dict(), checkpoint_path)
+                checkpoint_path = f"model/yolo.pth"
+                print(f"---- Saving checkpoint from batch: {batch_i} of epoch {epoch} to: '{checkpoint_path}' ----")
+                torch.save(model.state_dict(), checkpoint_path)
+
+            ############################################
+            # Logging the progress to the terminal
+            ############################################
+
+            print(AsciiTable(
+                [
+                    ["Type", "Value"],
+                    ["IoU loss", float(loss_components[0])],
+                    ["Object loss", float(loss_components[1])],
+                    ["Class loss", float(loss_components[2])],
+                    ["Loss", float(loss_components[3])],
+                    ["Batch loss", loss.item()],
+                ]).table)
         
 if __name__ == "__main__":
     train()
